@@ -30,8 +30,8 @@ Router Switchboard (mounted at startup under /api/v1):
   ws_router   → /ws/kitchen (broadcast), /ws/waiter/{id} (targeted push)
 
 CORS Middleware:
-  Configured with allow_origins=["*"] for development.
-  Replace with explicit frontend origin(s) in production.
+  Configured via CORS_ORIGINS env var (comma-separated).
+  Defaults to localhost dev ports; override in production.
 """
 import logging
 from contextlib import asynccontextmanager
@@ -90,7 +90,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
