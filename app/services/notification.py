@@ -34,9 +34,29 @@ Dead connection cleanup:
 import json
 from typing import Optional
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, status
+import jwt
+from jwt.exceptions import InvalidTokenError as JWTError
+
+from app.config import settings
 
 router = APIRouter(tags=["WebSockets"])
+
+
+async def _authenticate_ws(websocket: WebSocket, token: str | None) -> bool:
+    """Verify JWT token on WebSocket connection. Closes with 4401 if invalid."""
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if not payload.get("sub"):
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return False
+    except JWTError:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return False
+    return True
 
 
 class ConnectionManager:
@@ -106,7 +126,9 @@ async def notify_waiter(order_id: int, waiter_id: Optional[int]) -> None:
 # ---------------------------------------------------------------------------
 
 @router.websocket("/ws/kitchen")
-async def kitchen_ws(websocket: WebSocket):
+async def kitchen_ws(websocket: WebSocket, token: str | None = Query(None)):
+    if not await _authenticate_ws(websocket, token):
+        return
     await manager.connect_kitchen(websocket)
     try:
         while True:
@@ -116,7 +138,9 @@ async def kitchen_ws(websocket: WebSocket):
 
 
 @router.websocket("/ws/waiter/{waiter_id}")
-async def waiter_ws(websocket: WebSocket, waiter_id: int):
+async def waiter_ws(websocket: WebSocket, waiter_id: int, token: str | None = Query(None)):
+    if not await _authenticate_ws(websocket, token):
+        return
     await manager.connect_waiter(websocket, waiter_id)
     try:
         while True:
