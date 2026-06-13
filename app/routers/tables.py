@@ -38,6 +38,7 @@ from app.schemas import (
     PublicMenuOut, ReservationCreate, ReservationOut, ReservationUpdate,
     TableCreate, TableOut, TableUpdate,
 )
+from app.services.crud_helpers import apply_partial_update, create_and_refresh, get_or_404
 from app.tasks import send_reservation_confirmation
 
 router = APIRouter(prefix="/tables", tags=["Tables & Reservations"])
@@ -66,9 +67,7 @@ async def create_table(
 ):
     token = payload.qr_code_token or secrets.token_urlsafe(24)
     table = Table(tenant_id=tenant.id, capacity=payload.capacity, qr_code_token=token)
-    db.add(table)
-    await db.flush()
-    await db.refresh(table)
+    await create_and_refresh(db, table)
     return table
 
 
@@ -86,14 +85,11 @@ async def update_table(
     _: Annotated[User, RequireWaiter],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Table).where(Table.id == table_id, Table.tenant_id == tenant.id))
-    table = result.scalar_one_or_none()
-    if not table:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(table, field, value)
-    await db.flush()
-    await db.refresh(table)
+    table = await get_or_404(
+        db, Table, Table.id == table_id, Table.tenant_id == tenant.id,
+        detail="Table not found",
+    )
+    await apply_partial_update(db, table, payload)
     return table
 
 
@@ -104,10 +100,10 @@ async def delete_table(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Table).where(Table.id == table_id, Table.tenant_id == tenant.id))
-    table = result.scalar_one_or_none()
-    if not table:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+    table = await get_or_404(
+        db, Table, Table.id == table_id, Table.tenant_id == tenant.id,
+        detail="Table not found",
+    )
     await db.delete(table)
 
 
@@ -166,13 +162,12 @@ async def create_reservation(
     _: Annotated[User, RequireWaiter],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    tbl_r = await db.execute(select(Table).where(Table.id == payload.table_id, Table.tenant_id == tenant.id))
-    if not tbl_r.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Table not found")
+    await get_or_404(
+        db, Table, Table.id == payload.table_id, Table.tenant_id == tenant.id,
+        detail="Table not found",
+    )
     reservation = Reservation(tenant_id=tenant.id, **payload.model_dump())
-    db.add(reservation)
-    await db.flush()
-    await db.refresh(reservation)
+    await create_and_refresh(db, reservation)
     send_reservation_confirmation.delay(reservation.id)
     return reservation
 
@@ -185,14 +180,11 @@ async def update_reservation(
     _: Annotated[User, RequireWaiter],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    res_r = await db.execute(select(Reservation).where(Reservation.id == res_id, Reservation.tenant_id == tenant.id))
-    reservation = res_r.scalar_one_or_none()
-    if not reservation:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(reservation, field, value)
-    await db.flush()
-    await db.refresh(reservation)
+    reservation = await get_or_404(
+        db, Reservation, Reservation.id == res_id, Reservation.tenant_id == tenant.id,
+        detail="Reservation not found",
+    )
+    await apply_partial_update(db, reservation, payload)
     return reservation
 
 
@@ -203,8 +195,8 @@ async def delete_reservation(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    res_r = await db.execute(select(Reservation).where(Reservation.id == res_id, Reservation.tenant_id == tenant.id))
-    reservation = res_r.scalar_one_or_none()
-    if not reservation:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
+    reservation = await get_or_404(
+        db, Reservation, Reservation.id == res_id, Reservation.tenant_id == tenant.id,
+        detail="Reservation not found",
+    )
     await db.delete(reservation)

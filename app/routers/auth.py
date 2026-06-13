@@ -16,6 +16,7 @@ from app.auth import (
 from app.database import get_db
 from app.models import Tenant, User
 from app.schemas import Token, UserCreate, UserOut
+from app.services.crud_helpers import check_unique_or_409, create_and_refresh
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -60,11 +61,11 @@ async def register(
     admin: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    existing = await db.execute(
-        select(User).where(User.username == payload.username, User.tenant_id == tenant.id)
+    await check_unique_or_409(
+        db, User,
+        User.username == payload.username, User.tenant_id == tenant.id,
+        detail="Username already taken",
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username already taken")
     user = User(
         tenant_id=tenant.id,
         username=payload.username,
@@ -73,9 +74,7 @@ async def register(
         role=payload.role,
         phone=payload.phone,
     )
-    db.add(user)
-    await db.flush()
-    await db.refresh(user)
+    await create_and_refresh(db, user)
     return user
 
 

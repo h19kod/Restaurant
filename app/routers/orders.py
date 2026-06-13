@@ -43,8 +43,9 @@ from app.auth import RequireChef, RequireWaiter, get_current_tenant, get_current
 from app.database import get_db
 from app.dependencies import get_redis
 from app.models import MenuItem, Order, OrderItem, OrderStatus, OrderType, Table, TableStatus, Tenant, User, UserRole
-from app.schemas import CustomerOrderCreate, OrderCreate, OrderItemsUpdate, OrderOut, OrderStatusUpdate
+from app.schemas import CustomerOrderCreate, OrderCreate, OrderItemCreate, OrderItemsUpdate, OrderOut, OrderStatusUpdate
 from app.services.cache import evict_active_orders, get_cached_active_orders, set_cached_active_orders
+from app.services.crud_helpers import get_or_404
 from app.services.notification import notify_kitchen, notify_waiter
 
 router = APIRouter(prefix="/orders", tags=["Orders"])
@@ -55,13 +56,41 @@ _ORDER_LOAD = [
 
 
 async def _get_order_or_404(db: AsyncSession, order_id: int, tenant_id: int) -> Order:
-    result = await db.execute(
-        select(Order).options(*_ORDER_LOAD).where(Order.id == order_id, Order.tenant_id == tenant_id)
+    return await get_or_404(
+        db, Order, Order.id == order_id, Order.tenant_id == tenant_id,
+        detail="Order not found",
+        options=_ORDER_LOAD,
     )
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    return order
+
+
+async def _validate_and_add_order_item(
+    db: AsyncSession,
+    order_id: int,
+    tenant_id: int,
+    item_data: OrderItemCreate,
+) -> None:
+    """Fetch a MenuItem, verify availability, and add an OrderItem to the session."""
+    mi_result = await db.execute(
+        select(MenuItem).where(MenuItem.id == item_data.menu_item_id, MenuItem.tenant_id == tenant_id)
+    )
+    menu_item = mi_result.scalar_one_or_none()
+    if not menu_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"MenuItem id={item_data.menu_item_id} not found",
+        )
+    if not menu_item.is_available:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"'{menu_item.name}' is currently unavailable",
+        )
+    db.add(OrderItem(
+        order_id=order_id,
+        menu_item_id=menu_item.id,
+        quantity=item_data.quantity,
+        special_notes=item_data.special_notes,
+        ordered_price=menu_item.price,
+    ))
 
 
 @router.get("/", response_model=list[OrderOut])
@@ -154,26 +183,7 @@ async def create_order(
     await db.flush()
 
     for item_data in payload.items:
-        mi_result = await db.execute(select(MenuItem).where(MenuItem.id == item_data.menu_item_id, MenuItem.tenant_id == tenant.id))
-        menu_item = mi_result.scalar_one_or_none()
-        if not menu_item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"MenuItem id={item_data.menu_item_id} not found",
-            )
-        if not menu_item.is_available:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{menu_item.name}' is currently unavailable",
-            )
-        order_item = OrderItem(
-            order_id=order.id,
-            menu_item_id=menu_item.id,
-            quantity=item_data.quantity,
-            special_notes=item_data.special_notes,
-            ordered_price=menu_item.price,
-        )
-        db.add(order_item)
+        await _validate_and_add_order_item(db, order.id, tenant.id, item_data)
 
     if payload.table_id:
         table = await db.get(Table, payload.table_id)
@@ -282,25 +292,7 @@ async def update_order_items(
                 setattr(item, field, value)
 
     for item_data in payload.add_items:
-        mi_r = await db.execute(select(MenuItem).where(MenuItem.id == item_data.menu_item_id, MenuItem.tenant_id == tenant.id))
-        menu_item = mi_r.scalar_one_or_none()
-        if not menu_item:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"MenuItem id={item_data.menu_item_id} not found",
-            )
-        if not menu_item.is_available:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"'{menu_item.name}' is currently unavailable",
-            )
-        db.add(OrderItem(
-            order_id=order_id,
-            menu_item_id=menu_item.id,
-            quantity=item_data.quantity,
-            special_notes=item_data.special_notes,
-            ordered_price=menu_item.price,
-        ))
+        await _validate_and_add_order_item(db, order_id, tenant.id, item_data)
 
     await db.flush()
     return await _get_order_or_404(db, order_id, tenant.id)
@@ -315,10 +307,10 @@ async def cancel_order(
     redis: Annotated[Redis, Depends(get_redis)],
 ):
     """Cancel an order. Only allowed while status is still Pending."""
-    result = await db.execute(select(Order).where(Order.id == order_id, Order.tenant_id == tenant.id))
-    order = result.scalar_one_or_none()
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    order = await get_or_404(
+        db, Order, Order.id == order_id, Order.tenant_id == tenant.id,
+        detail="Order not found",
+    )
     if order.status != OrderStatus.Pending:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
