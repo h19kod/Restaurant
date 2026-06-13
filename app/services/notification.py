@@ -32,9 +32,12 @@ Dead connection cleanup:
   when a send fails, preventing memory leaks from disconnected clients.
 """
 import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["WebSockets"])
 
@@ -68,7 +71,8 @@ class ConnectionManager:
         for ws in list(self._kitchen):
             try:
                 await ws.send_text(json.dumps(message))
-            except Exception:
+            except Exception as exc:
+                logger.debug("[WS] Kitchen connection dropped: %s", exc)
                 dead.append(ws)
         for ws in dead:
             self.disconnect_kitchen(ws)
@@ -79,7 +83,8 @@ class ConnectionManager:
         for ws in connections:
             try:
                 await ws.send_text(json.dumps(message))
-            except Exception:
+            except Exception as exc:
+                logger.debug("[WS] Waiter #%d connection dropped: %s", waiter_id, exc)
                 dead.append(ws)
         for ws in dead:
             self.disconnect_waiter(ws, waiter_id)

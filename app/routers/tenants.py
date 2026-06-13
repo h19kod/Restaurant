@@ -265,10 +265,14 @@ async def billing_portal(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No Stripe customer linked to this tenant",
         )
-    portal_url = create_portal_session(
-        stripe_customer_id=tenant.stripe_customer_id,
-        return_url=f"{_FRONTEND_URL}",
-    )
+    try:
+        portal_url = create_portal_session(
+            stripe_customer_id=tenant.stripe_customer_id,
+            return_url=f"{_FRONTEND_URL}",
+        )
+    except Exception as exc:
+        logger.error("[STRIPE] Portal session creation failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="Stripe error")
     return {"portal_url": portal_url}
 
 
