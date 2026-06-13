@@ -34,7 +34,7 @@ async def test_create_order_price_lock(
     client: AsyncClient, waiter: User, menu_item: MenuItem, table: Table
 ):
     order = await _seed_order(client, waiter, menu_item, table)
-    item = order["items"][0]
+    item = order["order_items"][0]
     assert float(item["ordered_price"]) == float(menu_item.price)
 
 
@@ -43,11 +43,11 @@ async def test_create_order_unavailable_item(
     client: AsyncClient, admin: User, waiter: User,
     db: AsyncSession, category: Category,
 ):
-    unavailable = await _make_menu_item(db, category.id, "Unavailable Dish", "8.00")
+    unavailable = await _make_menu_item(db, category.id, "Unavailable Dish", "8.00", tenant_id=category.tenant_id)
     unavailable.is_available = False
     await db.flush()
 
-    tbl = await _make_table(db)
+    tbl = await _make_table(db, tenant_id=category.tenant_id)
     resp = await client.post(
         "/api/v1/orders/",
         json={

@@ -24,6 +24,7 @@ from app.models import (
     Category, Inventory, MenuItem,
     Order, OrderItem, OrderStatus, OrderType,
     PaymentMethod, RecipeItem, StockUnit, Table, TableStatus,
+    Tenant, SubscriptionPlan, SubscriptionStatus,
     User, UserRole,
 )
 
@@ -34,6 +35,19 @@ async def override_get_redis():
 
 
 app.dependency_overrides[get_redis] = override_get_redis
+
+
+# ---------------------------------------------------------------------------
+# Stub Celery tasks so they don't need a running broker
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock
+import app.tasks as _tasks_module
+
+for _attr in dir(_tasks_module):
+    _obj = getattr(_tasks_module, _attr)
+    if callable(getattr(_obj, "delay", None)):
+        _obj.delay = MagicMock(return_value=None)
 
 
 def _uid() -> str:
@@ -100,8 +114,23 @@ async def db() -> AsyncGenerator[AsyncSession, None]:
 # Seed helpers  (all use _uid() so names are always unique)
 # ---------------------------------------------------------------------------
 
-async def _make_user(db, username, role, password="pass123"):
+async def _make_tenant(db, name=None, subdomain=None):
+    tenant = Tenant(
+        name=name or "TestRestaurant_" + _uid(),
+        subdomain=subdomain or "test-" + _uid(),
+        plan=SubscriptionPlan.Free,
+        subscription_status=SubscriptionStatus.Active,
+        is_active=True,
+    )
+    db.add(tenant)
+    await db.flush()
+    await db.refresh(tenant)
+    return tenant
+
+
+async def _make_user(db, username, role, tenant_id, password="pass123"):
     user = User(
+        tenant_id=tenant_id,
         username=username,
         password_hash=hash_password(password),
         full_name=username.title(),
@@ -114,16 +143,20 @@ async def _make_user(db, username, role, password="pass123"):
     return user
 
 
-async def _make_category(db, name=None):
-    cat = Category(name=name if name else "Cat_" + _uid())
+async def _make_category(db, name=None, tenant_id=None):
+    cat = Category(
+        tenant_id=tenant_id,
+        name=name if name else "Cat_" + _uid(),
+    )
     db.add(cat)
     await db.flush()
     await db.refresh(cat)
     return cat
 
 
-async def _make_menu_item(db, category_id, name=None, price="10.00"):
+async def _make_menu_item(db, category_id, name=None, price="10.00", tenant_id=None):
     item = MenuItem(
+        tenant_id=tenant_id,
         category_id=category_id,
         name=name if name else "Item_" + _uid(),
         price=Decimal(price),
@@ -135,9 +168,13 @@ async def _make_menu_item(db, category_id, name=None, price="10.00"):
     return item
 
 
-async def _make_table(db, capacity=4):
+async def _make_table(db, capacity=4, tenant_id=None):
     import secrets
-    table = Table(capacity=capacity, qr_code_token=secrets.token_urlsafe(16))
+    table = Table(
+        tenant_id=tenant_id,
+        capacity=capacity,
+        qr_code_token=secrets.token_urlsafe(16),
+    )
     db.add(table)
     await db.flush()
     await db.refresh(table)
@@ -145,7 +182,12 @@ async def _make_table(db, capacity=4):
 
 
 def _token(user):
-    return create_access_token(user_id=user.id, username=user.username, role=user.role.value)
+    return create_access_token(
+        user_id=user.id,
+        username=user.username,
+        role=user.role.value,
+        tenant_id=user.tenant_id,
+    )
 
 
 def _auth(user):
@@ -157,38 +199,43 @@ def _auth(user):
 # ---------------------------------------------------------------------------
 
 @pytest_asyncio.fixture
-async def admin(db):
-    return await _make_user(db, "admin_" + _uid(), UserRole.Admin)
+async def tenant(db):
+    return await _make_tenant(db)
 
 
 @pytest_asyncio.fixture
-async def waiter(db):
-    return await _make_user(db, "waiter_" + _uid(), UserRole.Waiter)
+async def admin(db, tenant):
+    return await _make_user(db, "admin_" + _uid(), UserRole.Admin, tenant.id)
 
 
 @pytest_asyncio.fixture
-async def chef(db):
-    return await _make_user(db, "chef_" + _uid(), UserRole.Chef)
+async def waiter(db, tenant):
+    return await _make_user(db, "waiter_" + _uid(), UserRole.Waiter, tenant.id)
 
 
 @pytest_asyncio.fixture
-async def cashier(db):
-    return await _make_user(db, "cashier_" + _uid(), UserRole.Cashier)
+async def chef(db, tenant):
+    return await _make_user(db, "chef_" + _uid(), UserRole.Chef, tenant.id)
 
 
 @pytest_asyncio.fixture
-async def category(db):
-    return await _make_category(db, "Category_" + _uid())
+async def cashier(db, tenant):
+    return await _make_user(db, "cashier_" + _uid(), UserRole.Cashier, tenant.id)
 
 
 @pytest_asyncio.fixture
-async def menu_item(db, category):
-    return await _make_menu_item(db, category.id, "Item_" + _uid(), "12.00")
+async def category(db, tenant):
+    return await _make_category(db, "Category_" + _uid(), tenant_id=tenant.id)
 
 
 @pytest_asyncio.fixture
-async def table(db):
-    return await _make_table(db)
+async def menu_item(db, category, tenant):
+    return await _make_menu_item(db, category.id, "Item_" + _uid(), "12.00", tenant_id=tenant.id)
+
+
+@pytest_asyncio.fixture
+async def table(db, tenant):
+    return await _make_table(db, tenant_id=tenant.id)
 
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,9 @@ from app.models import Category, Inventory, MenuItem, RecipeItem, StockUnit, Use
 from tests.conftest import _auth, _make_menu_item
 
 
-async def _make_ingredient(db: AsyncSession, name: str, stock: str = "10.000", min_level: str = "2.000") -> Inventory:
+async def _make_ingredient(db: AsyncSession, name: str, stock: str = "10.000", min_level: str = "2.000", tenant_id: int = None) -> Inventory:
     item = Inventory(
+        tenant_id=tenant_id,
         ingredient_name=name,
         current_stock=Decimal(stock),
         unit=StockUnit.KG,
@@ -27,7 +28,7 @@ async def _make_ingredient(db: AsyncSession, name: str, stock: str = "10.000", m
 
 @pytest.mark.asyncio
 async def test_list_inventory_admin_only(client: AsyncClient, admin: User, waiter: User, db: AsyncSession):
-    await _make_ingredient(db, "InventoryListTest")
+    await _make_ingredient(db, "InventoryListTest", tenant_id=admin.tenant_id)
     resp = await client.get("/api/v1/inventory/", headers=_auth(admin))
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
@@ -51,7 +52,7 @@ async def test_create_inventory_item(client: AsyncClient, admin: User):
 
 @pytest.mark.asyncio
 async def test_low_stock_flag(client: AsyncClient, admin: User, db: AsyncSession):
-    item = await _make_ingredient(db, "LowStockIngredient", stock="1.000", min_level="5.000")
+    item = await _make_ingredient(db, "LowStockIngredient", stock="1.000", min_level="5.000", tenant_id=admin.tenant_id)
     resp = await client.get(f"/api/v1/inventory/{item.id}", headers=_auth(admin))
     assert resp.status_code == 200
     assert resp.json()["is_low_stock"] is True
@@ -59,7 +60,7 @@ async def test_low_stock_flag(client: AsyncClient, admin: User, db: AsyncSession
 
 @pytest.mark.asyncio
 async def test_low_stock_filter(client: AsyncClient, admin: User, db: AsyncSession):
-    await _make_ingredient(db, "FilterLow", stock="0.500", min_level="5.000")
+    await _make_ingredient(db, "FilterLow", stock="0.500", min_level="5.000", tenant_id=admin.tenant_id)
     resp = await client.get("/api/v1/inventory/?low_stock_only=true", headers=_auth(admin))
     assert resp.status_code == 200
     for item in resp.json():
@@ -68,7 +69,7 @@ async def test_low_stock_filter(client: AsyncClient, admin: User, db: AsyncSessi
 
 @pytest.mark.asyncio
 async def test_restock_increases_stock(client: AsyncClient, admin: User, db: AsyncSession):
-    item = await _make_ingredient(db, "RestockIngredient", stock="5.000")
+    item = await _make_ingredient(db, "RestockIngredient", stock="5.000", tenant_id=admin.tenant_id)
     resp = await client.patch(
         f"/api/v1/inventory/{item.id}/restock",
         json={"quantity_to_add": 10.0},
@@ -93,7 +94,7 @@ async def test_create_recipe_mapping(
     client: AsyncClient, admin: User,
     db: AsyncSession, menu_item: MenuItem,
 ):
-    ingredient = await _make_ingredient(db, "RecipeIngredient")
+    ingredient = await _make_ingredient(db, "RecipeIngredient", tenant_id=admin.tenant_id)
     resp = await client.post(
         "/api/v1/inventory/recipes",
         json={
@@ -112,7 +113,7 @@ async def test_duplicate_recipe_mapping_rejected(
     client: AsyncClient, admin: User,
     db: AsyncSession, menu_item: MenuItem,
 ):
-    ingredient = await _make_ingredient(db, "DupRecipeIngredient")
+    ingredient = await _make_ingredient(db, "DupRecipeIngredient", tenant_id=admin.tenant_id)
     payload = {
         "menu_item_id": menu_item.id,
         "ingredient_id": ingredient.id,
@@ -128,9 +129,9 @@ async def test_list_recipes_filter_by_menu_item(
     client: AsyncClient, admin: User,
     db: AsyncSession, category: Category, menu_item: MenuItem,
 ):
-    other_item = await _make_menu_item(db, category.id, "OtherItem", "7.00")
-    ing1 = await _make_ingredient(db, "FilterIng1")
-    ing2 = await _make_ingredient(db, "FilterIng2")
+    other_item = await _make_menu_item(db, category.id, "OtherItem", "7.00", tenant_id=category.tenant_id)
+    ing1 = await _make_ingredient(db, "FilterIng1", tenant_id=admin.tenant_id)
+    ing2 = await _make_ingredient(db, "FilterIng2", tenant_id=admin.tenant_id)
 
     await client.post(
         "/api/v1/inventory/recipes",

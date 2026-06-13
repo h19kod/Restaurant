@@ -23,7 +23,7 @@ async def test_list_tables(client: AsyncClient, waiter: User, table: Table):
 async def test_create_table_admin(client: AsyncClient, admin: User):
     resp = await client.post(
         "/api/v1/tables/",
-        json={"capacity": 6},
+        json={"capacity": 6, "qr_code_token": "test-token-12345678"},
         headers=_auth(admin),
     )
     assert resp.status_code == 201
@@ -46,8 +46,8 @@ async def test_public_qr_menu(
     resp = await client.get(f"/api/v1/tables/{table.qr_code_token}/menu")
     assert resp.status_code == 200
     body = resp.json()
-    assert "table" in body
-    assert "menu" in body
+    assert "table_id" in body
+    assert "categories" in body
 
 
 @pytest.mark.asyncio
