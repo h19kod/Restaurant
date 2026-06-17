@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../context/i18n'
-import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat, Receipt, Languages } from 'lucide-react'
+import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat, Receipt, Languages, Monitor } from 'lucide-react'
 
 const allNavItems = [
   { path: '/dashboard', icon: Home, label: 'الرئيسية', roles: ['Admin', 'Cashier', 'Waiter', 'Chef'] },
@@ -9,6 +9,7 @@ const allNavItems = [
   { path: '/tables', icon: LayoutGrid, label: 'الطاولات', roles: ['Admin', 'Waiter'] },
   { path: '/menu', icon: Utensils, label: 'القائمة', roles: ['Admin'] },
   { path: '/inventory', icon: Package, label: 'المخزون', roles: ['Admin', 'Chef'] },
+  { path: '/kitchen', icon: Monitor, label: 'شاشة المطبخ', roles: ['Admin', 'Chef'] },
   { path: '/billing', icon: Receipt, label: 'الفوترة والدفع', roles: ['Admin', 'Cashier'] },
   { path: '/reports', icon: BarChart3, label: 'التقارير', roles: ['Admin', 'Cashier'] },
   { path: '/users', icon: Users, label: 'المستخدمين', roles: ['Admin'] },

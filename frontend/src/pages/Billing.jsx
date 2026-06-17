@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
-import { Receipt, CreditCard, Banknote, Tag, CheckCircle, RefreshCw, XCircle } from 'lucide-react'
+import { Receipt, CreditCard, Banknote, Tag, CheckCircle, RefreshCw, XCircle, Download } from 'lucide-react'
+import { generateInvoicePDF } from '../utils/generatePDF'
 import axios from 'axios'
 
 const stripeKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY
@@ -333,6 +334,7 @@ export default function Billing() {
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">الإجمالي</th>
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">طريقة الدفع</th>
                   <th className="text-right py-3 px-4 text-xs font-semibold text-gray-500">التاريخ</th>
+                  <th className="py-3 px-4"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -350,6 +352,17 @@ export default function Billing() {
                     </td>
                     <td className="py-3 px-4 text-xs text-gray-400">
                       {new Date(inv.paid_at).toLocaleDateString('ar', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={() => {
+                          const order = orders.find(o => o.id === inv.order_id)
+                          generateInvoicePDF(inv, order)
+                        }}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:bg-blue-50 px-2 py-1 rounded-lg"
+                      >
+                        <Download size={12} /> PDF
+                      </button>
                     </td>
                   </tr>
                 ))}

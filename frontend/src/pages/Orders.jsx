@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
-import { Plus, Trash2, Edit2, XCircle, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { Plus, Trash2, Edit2, XCircle, RefreshCw, ChevronDown, ChevronUp, Wifi } from 'lucide-react'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
+import { useWebSocket } from '../hooks/useWebSocket'
 
 const statusConfig = {
   Pending:   { label: 'انتظار',   color: 'bg-yellow-100 text-yellow-700 border-yellow-200' },
@@ -36,7 +37,9 @@ export default function Orders() {
   const [editItems, setEditItems] = useState([])
   const [editSaving, setEditSaving] = useState(false)
 
-  const fetchAll = () => {
+  const [wsConnected, setWsConnected] = useState(false)
+
+  const fetchAll = useCallback(() => {
     setLoading(true)
     Promise.all([
       axios.get('/api/v1/orders/'),
@@ -47,9 +50,14 @@ export default function Orders() {
       setTables(tabRes.data)
       setMenuItems(menuRes.data.filter(m => m.is_available))
     }).catch(() => {}).finally(() => setLoading(false))
-  }
+  }, [])
 
-  useEffect(() => { fetchAll() }, [])
+  useEffect(() => { fetchAll() }, [fetchAll])
+
+  useWebSocket('/ws/kitchen', useCallback((msg) => {
+    if (msg.event === 'new_order' || msg.event === 'order_ready') fetchAll()
+    setWsConnected(true)
+  }, [fetchAll]))
 
   /* ── Add Order ── */
   const openAdd = () => {
@@ -171,6 +179,10 @@ export default function Orders() {
           <p className="text-sm text-gray-500">{orders.length} طلب إجمالي</p>
         </div>
         <div className="flex gap-2">
+          <div className={`flex items-center gap-1 text-xs px-2 py-1 rounded-full border ${wsConnected ? 'text-green-600 border-green-200 bg-green-50' : 'text-gray-400 border-gray-200'}`} title={wsConnected ? 'متصل - تحديث تلقائي' : 'غير متصل'}>
+            <Wifi size={12} />
+            <span>{wsConnected ? 'مباشر' : 'غير متصل'}</span>
+          </div>
           <button onClick={fetchAll} className="flex items-center gap-2 text-sm text-blue-600 hover:bg-blue-50 px-3 py-2 rounded-xl border border-blue-200 transition-colors">
             <RefreshCw size={16} /> تحديث
           </button>

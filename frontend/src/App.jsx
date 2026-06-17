@@ -12,6 +12,7 @@ import Inventory from './pages/Inventory'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Billing from './pages/Billing'
+import Kitchen from './pages/Kitchen'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -45,6 +46,7 @@ function App() {
             <Route path="reports" element={<Reports />} />
             <Route path="users" element={<Users />} />
             <Route path="billing" element={<Billing />} />
+            <Route path="kitchen" element={<Kitchen />} />
           </Route>
         </Routes>
       </BrowserRouter>
