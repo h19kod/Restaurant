@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Lock, User, ChefHat } from 'lucide-react'
 
@@ -100,6 +100,10 @@ export default function Login() {
               ))}
             </div>
           </div>
+        <p className="text-center text-xs text-gray-400 mt-5">
+          مطعم جديد؟{' '}
+          <Link to="/register" className="text-blue-600 font-semibold hover:underline">سجّل مجاناً 🚀</Link>
+        </p>
         </div>
       </div>
     </div>

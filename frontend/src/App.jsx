@@ -13,6 +13,8 @@ import Reports from './pages/Reports'
 import Users from './pages/Users'
 import Billing from './pages/Billing'
 import Kitchen from './pages/Kitchen'
+import Register from './pages/Register'
+import Subscription from './pages/Subscription'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -32,6 +34,7 @@ function App() {
         <Routes>
           <Route path="/order/:qrToken" element={<CustomerOrder />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route path="/" element={
             <ProtectedRoute>
               <Layout />
@@ -47,6 +50,7 @@ function App() {
             <Route path="users" element={<Users />} />
             <Route path="billing" element={<Billing />} />
             <Route path="kitchen" element={<Kitchen />} />
+            <Route path="subscription" element={<Subscription />} />
           </Route>
         </Routes>
       </BrowserRouter>
