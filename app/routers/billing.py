@@ -197,6 +197,36 @@ async def settle_invoice(
 
 
 # ---------------------------------------------------------------------------
+# Stripe Payment Intent
+# ---------------------------------------------------------------------------
+
+@router.post("/payment-intent/{order_id}", response_model=dict)
+async def create_payment_intent(
+    order_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    _: Annotated[User, RequireCashier],
+    tenant: Annotated[Tenant, Depends(get_current_tenant)],
+    coupon_code: str | None = None,
+):
+    """Creates a Stripe PaymentIntent for the order total. Returns client_secret for frontend."""
+    if not settings.STRIPE_SECRET_KEY:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Stripe is not configured. Add STRIPE_SECRET_KEY to .env",
+        )
+    import stripe
+    stripe.api_key = settings.STRIPE_SECRET_KEY
+    _, _, _, total_amount, _ = await _compute_invoice_figures(db, order_id, coupon_code, tenant.id)
+    intent = stripe.PaymentIntent.create(
+        amount=int(total_amount * 100),
+        currency="sar",
+        automatic_payment_methods={"enabled": True},
+        metadata={"order_id": str(order_id), "tenant_id": str(tenant.id)},
+    )
+    return {"client_secret": intent.client_secret, "amount": float(total_amount)}
+
+
+# ---------------------------------------------------------------------------
 # Invoice read endpoints
 # ---------------------------------------------------------------------------
 

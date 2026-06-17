@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { I18nProvider } from './context/i18n'
 import Login from './pages/Login'
 import CustomerOrder from './pages/CustomerOrder'
 import Layout from './components/Layout'
@@ -10,6 +11,7 @@ import Tables from './pages/Tables'
 import Inventory from './pages/Inventory'
 import Reports from './pages/Reports'
 import Users from './pages/Users'
+import Billing from './pages/Billing'
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
@@ -23,6 +25,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
+    <I18nProvider>
     <AuthProvider>
       <BrowserRouter>
         <Routes>
@@ -41,10 +44,12 @@ function App() {
             <Route path="inventory" element={<Inventory />} />
             <Route path="reports" element={<Reports />} />
             <Route path="users" element={<Users />} />
+            <Route path="billing" element={<Billing />} />
           </Route>
         </Routes>
       </BrowserRouter>
     </AuthProvider>
+    </I18nProvider>
   )
 }
 

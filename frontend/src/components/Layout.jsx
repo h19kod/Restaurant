@@ -1,6 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat } from 'lucide-react'
+import { useI18n } from '../context/i18n'
+import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat, Receipt, Languages } from 'lucide-react'
 
 const allNavItems = [
   { path: '/dashboard', icon: Home, label: 'الرئيسية', roles: ['Admin', 'Cashier', 'Waiter', 'Chef'] },
@@ -8,6 +9,7 @@ const allNavItems = [
   { path: '/tables', icon: LayoutGrid, label: 'الطاولات', roles: ['Admin', 'Waiter'] },
   { path: '/menu', icon: Utensils, label: 'القائمة', roles: ['Admin'] },
   { path: '/inventory', icon: Package, label: 'المخزون', roles: ['Admin', 'Chef'] },
+  { path: '/billing', icon: Receipt, label: 'الفوترة والدفع', roles: ['Admin', 'Cashier'] },
   { path: '/reports', icon: BarChart3, label: 'التقارير', roles: ['Admin', 'Cashier'] },
   { path: '/users', icon: Users, label: 'المستخدمين', roles: ['Admin'] },
 ]
@@ -28,6 +30,7 @@ const roleLabels = {
 
 export default function Layout() {
   const { user, logout } = useAuth()
+  const { lang, toggleLang, t } = useI18n()
   const location = useLocation()
 
   const navItems = allNavItems.filter(item =>
@@ -35,7 +38,7 @@ export default function Layout() {
   )
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden" dir="rtl">
+    <div className="flex h-screen bg-gray-50 overflow-hidden" dir={lang === 'ar' ? 'rtl' : 'ltr'}>
       {/* Sidebar */}
       <aside className="w-64 bg-white border-l border-gray-200 flex flex-col shadow-sm">
         {/* Logo */}
@@ -81,14 +84,21 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* Logout */}
-        <div className="p-3 border-t border-gray-100">
+        {/* Language + Logout */}
+        <div className="p-3 border-t border-gray-100 space-y-1">
+          <button
+            onClick={toggleLang}
+            className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl w-full transition-colors"
+          >
+            <Languages size={18} />
+            <span>{lang === 'ar' ? 'English' : 'عربي'}</span>
+          </button>
           <button
             onClick={logout}
             className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl w-full transition-colors"
           >
             <LogOut size={18} />
-            <span>تسجيل خروج</span>
+            <span>{t('logout')}</span>
           </button>
         </div>
       </aside>
