@@ -35,6 +35,11 @@ class OrderCreate(BaseModel):
     items: list[OrderItemCreate] = Field(..., min_length=1)
 
 
+class CustomerOrderCreate(BaseModel):
+    qr_token: str = Field(..., min_length=1)
+    items: list[OrderItemCreate] = Field(..., min_length=1)
+
+
 class OrderItemsUpdate(BaseModel):
     add_items: list[OrderItemCreate] = Field(default_factory=list)
     update_items: dict[int, OrderItemUpdate] = Field(default_factory=dict)

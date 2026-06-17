@@ -8,6 +8,7 @@ from app.schemas.menu import (
 )
 from app.schemas.orders import (
     CouponCreate, CouponOut, CouponUpdate,
+    CustomerOrderCreate,
     InvoiceOut, InvoicePreview, InvoiceSettle,
     OrderCreate, OrderItemCreate, OrderItemOut, OrderItemsUpdate, OrderItemUpdate,
     OrderOut, OrderStatusUpdate,

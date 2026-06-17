@@ -42,8 +42,8 @@ from redis.asyncio import Redis
 from app.auth import RequireChef, RequireWaiter, get_current_tenant, get_current_user
 from app.database import get_db
 from app.dependencies import get_redis
-from app.models import MenuItem, Order, OrderItem, OrderStatus, Table, TableStatus, Tenant, User, UserRole
-from app.schemas import OrderCreate, OrderItemsUpdate, OrderOut, OrderStatusUpdate
+from app.models import MenuItem, Order, OrderItem, OrderStatus, OrderType, Table, TableStatus, Tenant, User, UserRole
+from app.schemas import CustomerOrderCreate, OrderCreate, OrderItemsUpdate, OrderOut, OrderStatusUpdate
 from app.services.cache import evict_active_orders, get_cached_active_orders, set_cached_active_orders
 from app.services.notification import notify_kitchen, notify_waiter
 
@@ -185,6 +185,62 @@ async def create_order(
     await evict_active_orders(redis, tenant.id)
 
     return await _get_order_or_404(db, order.id, tenant.id)
+
+
+@router.post("/customer", response_model=OrderOut, status_code=status.HTTP_201_CREATED, tags=["Public"])
+async def create_customer_order(
+    payload: CustomerOrderCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    redis: Annotated[Redis, Depends(get_redis)],
+):
+    """
+    Public endpoint for customers to place orders via table QR code.
+    No JWT required — validation is done via qr_token.
+    """
+    result = await db.execute(select(Table).where(Table.qr_code_token == payload.qr_token))
+    table = result.scalar_one_or_none()
+    if not table:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invalid QR code")
+
+    order = Order(
+        tenant_id=table.tenant_id,
+        table_id=table.id,
+        waiter_id=None,
+        order_type=OrderType.DineIn,
+    )
+    db.add(order)
+    await db.flush()
+
+    for item_data in payload.items:
+        mi_result = await db.execute(
+            select(MenuItem).where(MenuItem.id == item_data.menu_item_id, MenuItem.tenant_id == table.tenant_id)
+        )
+        menu_item = mi_result.scalar_one_or_none()
+        if not menu_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"MenuItem id={item_data.menu_item_id} not found",
+            )
+        if not menu_item.is_available:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"'{menu_item.name}' is currently unavailable",
+            )
+        order_item = OrderItem(
+            order_id=order.id,
+            menu_item_id=menu_item.id,
+            quantity=item_data.quantity,
+            special_notes=item_data.special_notes,
+            ordered_price=menu_item.price,
+        )
+        db.add(order_item)
+
+    table.status = TableStatus.Occupied
+    await db.flush()
+    await notify_kitchen(order.id)
+    await evict_active_orders(redis, table.tenant_id)
+
+    return await _get_order_or_404(db, order.id, table.tenant_id)
 
 
 @router.patch("/{order_id}/items", response_model=OrderOut)

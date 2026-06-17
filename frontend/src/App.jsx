@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import Login from './pages/Login'
+import CustomerOrder from './pages/CustomerOrder'
 import Layout from './components/Layout'
 import Dashboard from './pages/Dashboard'
 import Menu from './pages/Menu'
@@ -11,8 +12,13 @@ import Reports from './pages/Reports'
 import Users from './pages/Users'
 
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem('token')
-  return token ? children : <Navigate to="/login" />
+  const { user, loading } = useAuth()
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+    </div>
+  )
+  return user ? children : <Navigate to="/login" replace />
 }
 
 function App() {
@@ -20,6 +26,7 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <Routes>
+          <Route path="/order/:qrToken" element={<CustomerOrder />} />
           <Route path="/login" element={<Login />} />
           <Route path="/" element={
             <ProtectedRoute>

@@ -1,92 +1,106 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Lock, User } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
+import { Lock, User, ChefHat } from 'lucide-react'
 
 export default function Login() {
-  const [username, setUsername] = useState('admin')
-  const [password, setPassword] = useState('admin123')
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const { login } = useAuth()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-    
     try {
-      const formData = new URLSearchParams()
-      formData.append('username', username)
-      formData.append('password', password)
-      
-      const response = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: formData.toString()
-      })
-      
-      if (!response.ok) {
-        throw new Error('Login failed')
-      }
-      
-      const data = await response.json()
-      localStorage.setItem('token', data.access_token)
+      await login(username, password)
       navigate('/dashboard')
-    } catch (err) {
-      setError('خطأ في اسم المستخدم أو كلمة المرور')
+    } catch {
+      setError('اسم المستخدم أو كلمة المرور غير صحيحة')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-500 to-purple-600">
-      <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
-        <h1 className="text-3xl font-bold text-center text-gray-800 mb-8">تسجيل الدخول</h1>
-        
-        {error && (
-          <div className="bg-red-100 text-red-700 p-3 rounded-lg mb-4 text-center">
-            {error}
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-blue-900">
+      <div className="w-full max-w-md px-4">
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">
+            <ChefHat className="text-white" size={32} />
           </div>
-        )}
-        
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-gray-700 mb-2 font-medium">اسم المستخدم</label>
-            <div className="relative">
-              <User className="absolute right-3 top-3 text-gray-400" size={20} />
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
+          <h1 className="text-3xl font-bold text-white">نظام إدارة المطعم</h1>
+          <p className="text-blue-300 mt-2">سجّل دخولك للمتابعة</p>
+        </div>
+
+        <div className="bg-white rounded-2xl shadow-2xl p-8">
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl mb-6 text-sm text-center">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">اسم المستخدم</label>
+              <div className="relative">
+                <User className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="text"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
+                  required
+                  autoFocus
+                  placeholder="أدخل اسم المستخدم"
+                  className="w-full pr-10 pl-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">كلمة المرور</label>
+              <div className="relative">
+                <Lock className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                <input
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  required
+                  placeholder="أدخل كلمة المرور"
+                  className="w-full pr-10 pl-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-800 bg-gray-50"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-md mt-2"
+            >
+              {loading ? 'جاري التحقق...' : 'دخول'}
+            </button>
+          </form>
+
+          <div className="mt-6 pt-5 border-t border-gray-100">
+            <p className="text-xs text-gray-400 text-center mb-2">اضغط على أي حساب للدخول مباشرة:</p>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              {[['admin','admin123','مدير'],['cashier','cashier123','كاشير'],['waiter','waiter123','نادل'],['chef','chef123','طاهي']].map(([u,p,label]) => (
+                <button
+                  key={u}
+                  type="button"
+                  onClick={() => { setUsername(u); setPassword(p) }}
+                  className="bg-blue-50 hover:bg-blue-100 border border-blue-100 rounded-lg p-2 text-center transition-colors cursor-pointer"
+                >
+                  <span className="font-bold text-blue-700 block">{u}</span>
+                  <span className="text-blue-400">{label}</span>
+                </button>
+              ))}
             </div>
           </div>
-          
-          <div>
-            <label className="block text-gray-700 mb-2 font-medium">كلمة المرور</label>
-            <div className="relative">
-              <Lock className="absolute right-3 top-3 text-gray-400" size={20} />
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full pr-10 pl-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-            </div>
-          </div>
-          
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors disabled:bg-gray-400"
-          >
-            {loading ? 'جاري الدخول...' : 'دخول'}
-          </button>
-        </form>
+        </div>
       </div>
     </div>
   )
