@@ -53,6 +53,7 @@ from app.schemas import (
     CouponCreate, CouponOut, CouponUpdate,
     InvoiceOut, InvoicePreview, InvoiceSettle,
 )
+from app.services.crud_helpers import apply_partial_update, check_unique_or_409, create_and_refresh, get_or_404
 from app.tasks import adjust_inventory_on_invoice, print_receipt
 
 router = APIRouter(prefix="/billing", tags=["Billing & Finance"])
@@ -247,11 +248,10 @@ async def get_invoice(
     _: Annotated[User, Depends(get_current_user)],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Invoice).where(Invoice.id == invoice_id, Invoice.tenant_id == tenant.id))
-    invoice = result.scalar_one_or_none()
-    if not invoice:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
-    return invoice
+    return await get_or_404(
+        db, Invoice, Invoice.id == invoice_id, Invoice.tenant_id == tenant.id,
+        detail="Invoice not found",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -275,11 +275,10 @@ async def get_coupon(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(DiscountCoupon).where(DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id))
-    coupon = result.scalar_one_or_none()
-    if not coupon:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon not found")
-    return coupon
+    return await get_or_404(
+        db, DiscountCoupon, DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id,
+        detail="Coupon not found",
+    )
 
 
 @router.post("/coupons", response_model=CouponOut, status_code=status.HTTP_201_CREATED)
@@ -289,13 +288,13 @@ async def create_coupon(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    existing = await db.execute(select(DiscountCoupon).where(DiscountCoupon.code == payload.code, DiscountCoupon.tenant_id == tenant.id))
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Coupon code already exists")
+    await check_unique_or_409(
+        db, DiscountCoupon,
+        DiscountCoupon.code == payload.code, DiscountCoupon.tenant_id == tenant.id,
+        detail="Coupon code already exists",
+    )
     coupon = DiscountCoupon(tenant_id=tenant.id, **payload.model_dump())
-    db.add(coupon)
-    await db.flush()
-    await db.refresh(coupon)
+    await create_and_refresh(db, coupon)
     return coupon
 
 
@@ -307,14 +306,11 @@ async def update_coupon(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(DiscountCoupon).where(DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id))
-    coupon = result.scalar_one_or_none()
-    if not coupon:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(coupon, field, value)
-    await db.flush()
-    await db.refresh(coupon)
+    coupon = await get_or_404(
+        db, DiscountCoupon, DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id,
+        detail="Coupon not found",
+    )
+    await apply_partial_update(db, coupon, payload)
     return coupon
 
 
@@ -325,8 +321,8 @@ async def delete_coupon(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(DiscountCoupon).where(DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id))
-    coupon = result.scalar_one_or_none()
-    if not coupon:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Coupon not found")
+    coupon = await get_or_404(
+        db, DiscountCoupon, DiscountCoupon.id == coupon_id, DiscountCoupon.tenant_id == tenant.id,
+        detail="Coupon not found",
+    )
     await db.delete(coupon)

@@ -8,6 +8,7 @@ from app.auth import RequireAdmin, get_current_tenant, get_current_user
 from app.database import get_db
 from app.models import Inventory, MenuItem, RecipeItem, Tenant, User
 from app.schemas import InventoryCreate, InventoryOut, InventoryRestock, InventoryUpdate, RecipeItemCreate, RecipeItemOut
+from app.services.crud_helpers import apply_partial_update, check_unique_or_409, create_and_refresh, get_or_404
 from app.services.stock_manager import restock_ingredient
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -22,9 +23,10 @@ async def restock_item(
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
     """Adjust stock upward when a new shipment arrives."""
-    chk = await db.execute(select(Inventory).where(Inventory.id == item_id, Inventory.tenant_id == tenant.id))
-    if not chk.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
+    await get_or_404(
+        db, Inventory, Inventory.id == item_id, Inventory.tenant_id == tenant.id,
+        detail="Inventory item not found",
+    )
     try:
         item = await restock_ingredient(db, item_id, payload.quantity_to_add)
     except ValueError as exc:
@@ -53,10 +55,10 @@ async def get_inventory_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Inventory).where(Inventory.id == item_id, Inventory.tenant_id == tenant.id))
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
+    item = await get_or_404(
+        db, Inventory, Inventory.id == item_id, Inventory.tenant_id == tenant.id,
+        detail="Inventory item not found",
+    )
     return InventoryOut.from_model(item)
 
 
@@ -67,15 +69,13 @@ async def create_inventory_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    existing = await db.execute(
-        select(Inventory).where(Inventory.ingredient_name == payload.ingredient_name, Inventory.tenant_id == tenant.id)
+    await check_unique_or_409(
+        db, Inventory,
+        Inventory.ingredient_name == payload.ingredient_name, Inventory.tenant_id == tenant.id,
+        detail="Ingredient already exists",
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Ingredient already exists")
     item = Inventory(tenant_id=tenant.id, **payload.model_dump())
-    db.add(item)
-    await db.flush()
-    await db.refresh(item)
+    await create_and_refresh(db, item)
     return InventoryOut.from_model(item)
 
 
@@ -87,14 +87,11 @@ async def update_inventory_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Inventory).where(Inventory.id == item_id, Inventory.tenant_id == tenant.id))
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(item, field, value)
-    await db.flush()
-    await db.refresh(item)
+    item = await get_or_404(
+        db, Inventory, Inventory.id == item_id, Inventory.tenant_id == tenant.id,
+        detail="Inventory item not found",
+    )
+    await apply_partial_update(db, item, payload)
     return InventoryOut.from_model(item)
 
 
@@ -105,10 +102,10 @@ async def delete_inventory_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Inventory).where(Inventory.id == item_id, Inventory.tenant_id == tenant.id))
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory item not found")
+    item = await get_or_404(
+        db, Inventory, Inventory.id == item_id, Inventory.tenant_id == tenant.id,
+        detail="Inventory item not found",
+    )
     await db.delete(item)
 
 
@@ -139,24 +136,22 @@ async def create_recipe(
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
     """Map a MenuItem to an Inventory ingredient with a required quantity per unit sold."""
-    mi_r = await db.execute(select(MenuItem).where(MenuItem.id == payload.menu_item_id, MenuItem.tenant_id == tenant.id))
-    if not mi_r.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MenuItem not found")
-    ing_r = await db.execute(select(Inventory).where(Inventory.id == payload.ingredient_id, Inventory.tenant_id == tenant.id))
-    if not ing_r.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Inventory ingredient not found")
-    existing = await db.execute(
-        select(RecipeItem).where(
-            RecipeItem.menu_item_id == payload.menu_item_id,
-            RecipeItem.ingredient_id == payload.ingredient_id,
-        )
+    await get_or_404(
+        db, MenuItem, MenuItem.id == payload.menu_item_id, MenuItem.tenant_id == tenant.id,
+        detail="MenuItem not found",
     )
-    if existing.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Recipe mapping already exists")
+    await get_or_404(
+        db, Inventory, Inventory.id == payload.ingredient_id, Inventory.tenant_id == tenant.id,
+        detail="Inventory ingredient not found",
+    )
+    await check_unique_or_409(
+        db, RecipeItem,
+        RecipeItem.menu_item_id == payload.menu_item_id,
+        RecipeItem.ingredient_id == payload.ingredient_id,
+        detail="Recipe mapping already exists",
+    )
     recipe = RecipeItem(**payload.model_dump())
-    db.add(recipe)
-    await db.flush()
-    await db.refresh(recipe)
+    await create_and_refresh(db, recipe)
     return recipe
 
 

@@ -12,6 +12,7 @@ from app.schemas import (
     CategoryCreate, CategoryOut, CategoryUpdate,
     MenuItemCreate, MenuItemOut, MenuItemUpdate,
 )
+from app.services.crud_helpers import apply_partial_update, create_and_refresh, get_or_404
 
 router = APIRouter(tags=["Menu"])
 
@@ -37,9 +38,7 @@ async def create_category(
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
     category = Category(tenant_id=tenant.id, **payload.model_dump())
-    db.add(category)
-    await db.flush()
-    await db.refresh(category)
+    await create_and_refresh(db, category)
     return category
 
 
@@ -51,14 +50,11 @@ async def update_category(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Category).where(Category.id == category_id, Category.tenant_id == tenant.id))
-    category = result.scalar_one_or_none()
-    if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(category, field, value)
-    await db.flush()
-    await db.refresh(category)
+    category = await get_or_404(
+        db, Category, Category.id == category_id, Category.tenant_id == tenant.id,
+        detail="Category not found",
+    )
+    await apply_partial_update(db, category, payload)
     return category
 
 
@@ -69,10 +65,10 @@ async def delete_category(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(Category).where(Category.id == category_id, Category.tenant_id == tenant.id))
-    category = result.scalar_one_or_none()
-    if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    category = await get_or_404(
+        db, Category, Category.id == category_id, Category.tenant_id == tenant.id,
+        detail="Category not found",
+    )
     await db.delete(category)
 
 
@@ -99,13 +95,11 @@ async def get_menu_item(
     db: Annotated[AsyncSession, Depends(get_db)],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(
-        select(MenuItem).options(selectinload(MenuItem.category)).where(MenuItem.id == item_id, MenuItem.tenant_id == tenant.id)
+    return await get_or_404(
+        db, MenuItem, MenuItem.id == item_id, MenuItem.tenant_id == tenant.id,
+        detail="Menu item not found",
+        options=[selectinload(MenuItem.category)],
     )
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu item not found")
-    return item
 
 
 @router.post("/menu-items", response_model=MenuItemOut, status_code=status.HTTP_201_CREATED)
@@ -115,10 +109,10 @@ async def create_menu_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    cat_result = await db.execute(select(Category).where(Category.id == payload.category_id, Category.tenant_id == tenant.id))
-    category = cat_result.scalar_one_or_none()
-    if not category:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Category not found")
+    await get_or_404(
+        db, Category, Category.id == payload.category_id, Category.tenant_id == tenant.id,
+        detail="Category not found",
+    )
     item = MenuItem(tenant_id=tenant.id, **payload.model_dump())
     db.add(item)
     await db.flush()
@@ -136,16 +130,12 @@ async def update_menu_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(
-        select(MenuItem).options(selectinload(MenuItem.category)).where(MenuItem.id == item_id, MenuItem.tenant_id == tenant.id)
+    item = await get_or_404(
+        db, MenuItem, MenuItem.id == item_id, MenuItem.tenant_id == tenant.id,
+        detail="Menu item not found",
+        options=[selectinload(MenuItem.category)],
     )
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu item not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(item, field, value)
-    await db.flush()
-    await db.refresh(item)
+    await apply_partial_update(db, item, payload)
     result = await db.execute(
         select(MenuItem).options(selectinload(MenuItem.category)).where(MenuItem.id == item_id)
     )
@@ -159,8 +149,8 @@ async def delete_menu_item(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(MenuItem).where(MenuItem.id == item_id, MenuItem.tenant_id == tenant.id))
-    item = result.scalar_one_or_none()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Menu item not found")
+    item = await get_or_404(
+        db, MenuItem, MenuItem.id == item_id, MenuItem.tenant_id == tenant.id,
+        detail="Menu item not found",
+    )
     await db.delete(item)

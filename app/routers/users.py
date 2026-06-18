@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,6 +8,7 @@ from app.auth import RequireAdmin, get_current_tenant
 from app.database import get_db
 from app.models import Tenant, User
 from app.schemas import UserOut, UserUpdate
+from app.services.crud_helpers import apply_partial_update, get_or_404
 
 router = APIRouter(prefix="/users", tags=["Users"])
 
@@ -29,11 +30,10 @@ async def get_user(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return user
+    return await get_or_404(
+        db, User, User.id == user_id, User.tenant_id == tenant.id,
+        detail="User not found",
+    )
 
 
 @router.patch("/{user_id}", response_model=UserOut)
@@ -44,14 +44,11 @@ async def update_user(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    for field, value in payload.model_dump(exclude_none=True).items():
-        setattr(user, field, value)
-    await db.flush()
-    await db.refresh(user)
+    user = await get_or_404(
+        db, User, User.id == user_id, User.tenant_id == tenant.id,
+        detail="User not found",
+    )
+    await apply_partial_update(db, user, payload)
     return user
 
 
@@ -62,8 +59,8 @@ async def delete_user(
     _: Annotated[User, RequireAdmin],
     tenant: Annotated[Tenant, Depends(get_current_tenant)],
 ):
-    result = await db.execute(select(User).where(User.id == user_id, User.tenant_id == tenant.id))
-    user = result.scalar_one_or_none()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    user = await get_or_404(
+        db, User, User.id == user_id, User.tenant_id == tenant.id,
+        detail="User not found",
+    )
     await db.delete(user)
