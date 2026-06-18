@@ -14,14 +14,14 @@ from app.models import (
     Category, DiscountCoupon, DiscountType, MenuItem,
     Order, OrderItem, OrderStatus, Table, User,
 )
-from tests.conftest import _auth, _make_category, _make_menu_item, _make_table
+from tests.conftest import _auth, _make_category, _make_menu_item, _make_table, _make_tenant
 
 
 async def _create_delivered_order(
     db: AsyncSession, waiter: User, menu_item: MenuItem, table: Table, client: AsyncClient, chef: User
 ) -> int:
     """Helper: create a Pending order and advance it to Delivered state."""
-    order = Order(table_id=table.id, waiter_id=waiter.id, order_type="Dine-In")
+    order = Order(tenant_id=waiter.tenant_id, table_id=table.id, waiter_id=waiter.id, order_type="Dine-In")
     db.add(order)
     await db.flush()
 
@@ -50,7 +50,7 @@ async def test_invoice_preview_calculates_correctly(
     client: AsyncClient, cashier: User, waiter: User, chef: User,
     db: AsyncSession, category: Category, table: Table,
 ):
-    item = await _make_menu_item(db, category.id, "PrevItem", "20.00")
+    item = await _make_menu_item(db, category.id, "PrevItem", "20.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     resp = await client.post(
@@ -69,7 +69,7 @@ async def test_invoice_settle_creates_invoice(
     client: AsyncClient, cashier: User, waiter: User, chef: User,
     db: AsyncSession, category: Category, table: Table,
 ):
-    item = await _make_menu_item(db, category.id, "SettleItem", "10.00")
+    item = await _make_menu_item(db, category.id, "SettleItem", "10.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     resp = await client.post(
@@ -81,7 +81,7 @@ async def test_invoice_settle_creates_invoice(
     body = resp.json()
     assert body["order_id"] == order_id
     assert body["payment_method"] == "Cash"
-    assert float(body["subtotal"]) == pytest.approx(10.0)
+    assert float(body["subtotal"]) == pytest.approx(30.0)  # 10.00 * qty=3
 
 
 @pytest.mark.asyncio
@@ -89,7 +89,7 @@ async def test_invoice_duplicate_rejected(
     client: AsyncClient, cashier: User, waiter: User, chef: User,
     db: AsyncSession, category: Category, table: Table,
 ):
-    item = await _make_menu_item(db, category.id, "DupItem", "5.00")
+    item = await _make_menu_item(db, category.id, "DupItem", "5.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     await client.post(
@@ -111,6 +111,7 @@ async def test_coupon_percentage_discount(
     db: AsyncSession, category: Category, table: Table,
 ):
     coupon = DiscountCoupon(
+        tenant_id=admin.tenant_id,
         code="SAVE10PCT",
         discount_type=DiscountType.Percentage,
         value=Decimal("10"),
@@ -119,7 +120,7 @@ async def test_coupon_percentage_discount(
     db.add(coupon)
     await db.flush()
 
-    item = await _make_menu_item(db, category.id, "PctItem", "100.00")
+    item = await _make_menu_item(db, category.id, "PctItem", "100.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     resp = await client.post(
@@ -128,7 +129,7 @@ async def test_coupon_percentage_discount(
     )
     assert resp.status_code == 200
     body = resp.json()
-    assert float(body["discount_amount"]) == pytest.approx(10.0)
+    assert float(body["discount_amount"]) == pytest.approx(30.0)  # 10% of 300 (100*3)
 
 
 @pytest.mark.asyncio
@@ -137,6 +138,7 @@ async def test_coupon_fixed_discount(
     db: AsyncSession, category: Category, table: Table,
 ):
     coupon = DiscountCoupon(
+        tenant_id=cashier.tenant_id,
         code="SAVE5FLAT",
         discount_type=DiscountType.FixedAmount,
         value=Decimal("5"),
@@ -145,7 +147,7 @@ async def test_coupon_fixed_discount(
     db.add(coupon)
     await db.flush()
 
-    item = await _make_menu_item(db, category.id, "FixedItem", "50.00")
+    item = await _make_menu_item(db, category.id, "FixedItem", "50.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     resp = await client.post(
@@ -162,16 +164,17 @@ async def test_expired_coupon_rejected(
     db: AsyncSession, category: Category, table: Table,
 ):
     coupon = DiscountCoupon(
+        tenant_id=cashier.tenant_id,
         code="EXPIRED",
         discount_type=DiscountType.Percentage,
         value=Decimal("20"),
         is_active=True,
-        expiry_date=datetime.now(timezone.utc) - timedelta(days=1),
+        expiry_date=datetime(2020, 1, 1),
     )
     db.add(coupon)
     await db.flush()
 
-    item = await _make_menu_item(db, category.id, "ExpItem", "30.00")
+    item = await _make_menu_item(db, category.id, "ExpItem", "30.00", tenant_id=category.tenant_id)
     order_id = await _create_delivered_order(db, waiter, item, table, client, chef)
 
     resp = await client.post(

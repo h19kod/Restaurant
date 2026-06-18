@@ -10,8 +10,8 @@ from tests.conftest import _auth
 
 
 @pytest.mark.asyncio
-async def test_list_categories_public(client: AsyncClient, category: Category):
-    resp = await client.get("/api/v1/categories")
+async def test_list_categories_public(client: AsyncClient, category: Category, admin: User):
+    resp = await client.get("/api/v1/categories", headers=_auth(admin))
     assert resp.status_code == 200
     assert any(c["name"] == category.name for c in resp.json())
 
@@ -55,30 +55,30 @@ async def test_delete_category_not_found(client: AsyncClient, admin: User):
 
 
 @pytest.mark.asyncio
-async def test_list_menu_items_public(client: AsyncClient, menu_item: MenuItem):
-    resp = await client.get("/api/v1/menu-items")
+async def test_list_menu_items_public(client: AsyncClient, menu_item: MenuItem, admin: User):
+    resp = await client.get("/api/v1/menu-items", headers=_auth(admin))
     assert resp.status_code == 200
     assert any(m["name"] == menu_item.name for m in resp.json())
 
 
 @pytest.mark.asyncio
-async def test_list_menu_items_available_only(client: AsyncClient, menu_item: MenuItem):
-    resp = await client.get("/api/v1/menu-items?available_only=true")
+async def test_list_menu_items_available_only(client: AsyncClient, menu_item: MenuItem, admin: User):
+    resp = await client.get("/api/v1/menu-items?available_only=true", headers=_auth(admin))
     assert resp.status_code == 200
     for item in resp.json():
         assert item["is_available"] is True
 
 
 @pytest.mark.asyncio
-async def test_get_menu_item_by_id(client: AsyncClient, menu_item: MenuItem):
-    resp = await client.get(f"/api/v1/menu-items/{menu_item.id}")
+async def test_get_menu_item_by_id(client: AsyncClient, menu_item: MenuItem, admin: User):
+    resp = await client.get(f"/api/v1/menu-items/{menu_item.id}", headers=_auth(admin))
     assert resp.status_code == 200
     assert resp.json()["id"] == menu_item.id
 
 
 @pytest.mark.asyncio
-async def test_get_menu_item_not_found(client: AsyncClient):
-    resp = await client.get("/api/v1/menu-items/99999")
+async def test_get_menu_item_not_found(client: AsyncClient, admin: User):
+    resp = await client.get("/api/v1/menu-items/99999", headers=_auth(admin))
     assert resp.status_code == 404
 
 

@@ -13,9 +13,9 @@ from app.models import Invoice, Order, OrderItem, OrderType, PaymentMethod, User
 from tests.conftest import _auth, _make_menu_item, _make_table
 
 
-async def _seed_paid_invoice(db: AsyncSession, menu_item, table) -> None:
+async def _seed_paid_invoice(db: AsyncSession, menu_item, table, tenant_id: int) -> None:
     from app.models import OrderStatus, User
-    order = Order(table_id=table.id, order_type=OrderType.DineIn, status=OrderStatus.Delivered)
+    order = Order(tenant_id=tenant_id, table_id=table.id, order_type=OrderType.DineIn, status=OrderStatus.Delivered)
     db.add(order)
     await db.flush()
     oi = OrderItem(
@@ -27,6 +27,7 @@ async def _seed_paid_invoice(db: AsyncSession, menu_item, table) -> None:
     db.add(oi)
     await db.flush()
     inv = Invoice(
+        tenant_id=tenant_id,
         order_id=order.id,
         subtotal=menu_item.price,
         tax_amount=Decimal("1.50"),
@@ -44,7 +45,7 @@ async def test_sales_summary_daily(
     client: AsyncClient, admin: User,
     db: AsyncSession, category, menu_item, table,
 ):
-    await _seed_paid_invoice(db, menu_item, table)
+    await _seed_paid_invoice(db, menu_item, table, tenant_id=admin.tenant_id)
     resp = await client.get("/api/v1/reports/sales/summary?range=daily", headers=_auth(admin))
     assert resp.status_code == 200
     body = resp.json()
@@ -95,7 +96,7 @@ async def test_trending_items(
     client: AsyncClient, admin: User,
     db: AsyncSession, category, menu_item, table,
 ):
-    await _seed_paid_invoice(db, menu_item, table)
+    await _seed_paid_invoice(db, menu_item, table, tenant_id=admin.tenant_id)
     resp = await client.get("/api/v1/reports/items/trending?limit=5", headers=_auth(admin))
     assert resp.status_code == 200
     assert isinstance(resp.json(), list)
