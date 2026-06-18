@@ -55,26 +55,31 @@ def print_receipt(self, invoice_id: int) -> dict:
     """Simulate sending a receipt to the POS printer or email."""
     from app.models import Invoice, Order
 
+    db = _get_sync_db()
     try:
-        db = _get_sync_db()
         invoice = db.get(Invoice, invoice_id)
         if not invoice:
             logger.warning("print_receipt: Invoice %d not found", invoice_id)
             return {"status": "skipped", "reason": "invoice_not_found"}
 
         order = db.get(Order, invoice.order_id)
+        if not order:
+            logger.error("print_receipt: Order %d for Invoice %d not found", invoice.order_id, invoice_id)
+            return {"status": "skipped", "reason": "order_not_found"}
+
         logger.info(
             "[RECEIPT] Invoice #%d | Order #%d | Total: %.2f | Method: %s",
             invoice.id,
-            invoice.order_id,
+            order.id,
             float(invoice.total_amount),
             invoice.payment_method.value,
         )
-        db.close()
         return {"status": "printed", "invoice_id": invoice_id}
     except Exception as exc:
         logger.error("print_receipt failed: %s", exc)
         raise self.retry(exc=exc, countdown=10)
+    finally:
+        db.close()
 
 
 @celery_app.task(name="tasks.adjust_inventory_on_invoice", bind=True, max_retries=3)
@@ -93,11 +98,10 @@ def adjust_inventory_on_invoice(self, invoice_id: int) -> dict:
     """
     from app.models import Inventory, Invoice, OrderItem, RecipeItem
 
+    db = _get_sync_db()
     try:
-        db = _get_sync_db()
         invoice = db.get(Invoice, invoice_id)
         if not invoice:
-            db.close()
             return {"status": "skipped", "reason": "invoice_not_found"}
 
         order_items = db.execute(
@@ -156,7 +160,6 @@ def adjust_inventory_on_invoice(self, invoice_id: int) -> dict:
                 low_stock_alerts.append(alert_msg)
 
         db.commit()
-        db.close()
 
         if low_stock_alerts:
             _send_email(
@@ -174,6 +177,8 @@ def adjust_inventory_on_invoice(self, invoice_id: int) -> dict:
     except Exception as exc:
         logger.error("adjust_inventory_on_invoice failed: %s", exc)
         raise self.retry(exc=exc, countdown=15)
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -185,11 +190,10 @@ def send_reservation_confirmation(self, reservation_id: int) -> dict:
     """Send an email/SMS confirmation when a reservation is created."""
     from app.models import Reservation
 
+    db = _get_sync_db()
     try:
-        db = _get_sync_db()
         reservation = db.get(Reservation, reservation_id)
         if not reservation:
-            db.close()
             return {"status": "skipped"}
 
         subject = "Your Reservation is Confirmed!"
@@ -209,11 +213,12 @@ def send_reservation_confirmation(self, reservation_id: int) -> dict:
             reservation.customer_name,
             reservation.customer_phone,
         )
-        db.close()
         return {"status": "sent", "reservation_id": reservation_id}
     except Exception as exc:
         logger.error("send_reservation_confirmation failed: %s", exc)
         raise self.retry(exc=exc, countdown=20)
+    finally:
+        db.close()
 
 
 @celery_app.task(name="tasks.send_reservation_reminder", bind=True, max_retries=2)
@@ -221,11 +226,10 @@ def send_reservation_reminder(self, reservation_id: int) -> dict:
     """Send a reminder 1 hour before the reservation (schedule via Celery beat)."""
     from app.models import Reservation
 
+    db = _get_sync_db()
     try:
-        db = _get_sync_db()
         reservation = db.get(Reservation, reservation_id)
         if not reservation:
-            db.close()
             return {"status": "skipped"}
 
         subject = "Reminder: Your Table is Ready Soon"
@@ -239,11 +243,12 @@ def send_reservation_reminder(self, reservation_id: int) -> dict:
         _send_email(f"{reservation.customer_phone}@placeholder.com", subject, body)
 
         logger.info("[REMINDER] Sent for reservation #%d", reservation_id)
-        db.close()
         return {"status": "sent", "reservation_id": reservation_id}
     except Exception as exc:
         logger.error("send_reservation_reminder failed: %s", exc)
         raise self.retry(exc=exc, countdown=30)
+    finally:
+        db.close()
 
 
 # ---------------------------------------------------------------------------
@@ -264,22 +269,27 @@ def generate_daily_sales_report(self) -> dict:
     end = start + timedelta(days=1)
 
     db = _get_sync_db()
-    from sqlalchemy import func
-    row = db.execute(
-        select(
-            func.coalesce(func.sum(Invoice.total_amount), 0).label("revenue"),
-            func.count(Invoice.id).label("count"),
-        ).where(Invoice.paid_at.between(start, end))
-    ).one()
+    try:
+        from sqlalchemy import func
+        row = db.execute(
+            select(
+                func.coalesce(func.sum(Invoice.total_amount), 0).label("revenue"),
+                func.count(Invoice.id).label("count"),
+            ).where(Invoice.paid_at.between(start, end))
+        ).one()
 
-    revenue = float(row.revenue)
-    count = int(row.count)
-    db.close()
+        revenue = float(row.revenue)
+        count = int(row.count)
 
-    logger.info(
-        "[DAILY REPORT] %s — Revenue: %.2f | Invoices: %d",
-        yesterday.isoformat(),
-        revenue,
-        count,
-    )
-    return {"date": yesterday.isoformat(), "revenue": revenue, "invoice_count": count}
+        logger.info(
+            "[DAILY REPORT] %s — Revenue: %.2f | Invoices: %d",
+            yesterday.isoformat(),
+            revenue,
+            count,
+        )
+        return {"date": yesterday.isoformat(), "revenue": revenue, "invoice_count": count}
+    except Exception as exc:
+        logger.error("generate_daily_sales_report failed: %s", exc)
+        raise
+    finally:
+        db.close()

@@ -22,6 +22,7 @@ from datetime import datetime, timezone
 import stripe
 
 from app.config import settings
+from app.models import SubscriptionPlan, SubscriptionStatus
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +167,7 @@ def parse_subscription_update(event: stripe.Event) -> dict:
 
     return {
         "stripe_subscription_id": sub.get("id"),
-        "subscription_status": internal_status,
-        "plan": plan,
+        "subscription_status": SubscriptionStatus(internal_status),
+        "plan": SubscriptionPlan(plan),
         "current_period_end": period_end_dt,
     }

@@ -269,17 +269,25 @@ async def update_order_items(
             select(OrderItem).where(OrderItem.id == item_id, OrderItem.order_id == order_id)
         )
         item = result.scalar_one_or_none()
-        if item:
-            await db.delete(item)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"OrderItem id={item_id} not found on this order",
+            )
+        await db.delete(item)
 
     for item_id, update_data in payload.update_items.items():
         result = await db.execute(
             select(OrderItem).where(OrderItem.id == int(item_id), OrderItem.order_id == order_id)
         )
         item = result.scalar_one_or_none()
-        if item:
-            for field, value in update_data.model_dump(exclude_none=True).items():
-                setattr(item, field, value)
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"OrderItem id={item_id} not found on this order",
+            )
+        for field, value in update_data.model_dump(exclude_none=True).items():
+            setattr(item, field, value)
 
     for item_data in payload.add_items:
         mi_r = await db.execute(select(MenuItem).where(MenuItem.id == item_data.menu_item_id, MenuItem.tenant_id == tenant.id))
