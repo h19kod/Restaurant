@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { I18nProvider } from './context/i18n'
+import { ThemeProvider } from './context/ThemeContext'
 import Login from './pages/Login'
 import CustomerOrder from './pages/CustomerOrder'
 import Layout from './components/Layout'
@@ -28,6 +29,7 @@ function ProtectedRoute({ children }) {
 
 function App() {
   return (
+    <ThemeProvider>
     <I18nProvider>
     <AuthProvider>
       <BrowserRouter>
@@ -56,6 +58,7 @@ function App() {
       </BrowserRouter>
     </AuthProvider>
     </I18nProvider>
+    </ThemeProvider>
   )
 }
 

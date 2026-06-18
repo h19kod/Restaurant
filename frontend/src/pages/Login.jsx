@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
-import { Lock, User, ChefHat } from 'lucide-react'
+import { Lock, User, ChefHat, Sun, Moon } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 export default function Login() {
   const [username, setUsername] = useState('')
@@ -9,6 +10,7 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
+  const { dark, toggle: toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   const handleSubmit = async (e) => {
@@ -26,7 +28,10 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-blue-900">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-blue-900 relative">
+      <button onClick={toggleTheme} className="absolute top-4 left-4 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 flex items-center justify-center text-white transition-colors" title="تبديل الوضع">
+        {dark ? <Sun size={16} /> : <Moon size={16} />}
+      </button>
       <div className="w-full max-w-md px-4">
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-600 rounded-2xl mb-4 shadow-lg">

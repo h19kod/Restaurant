@@ -1,7 +1,8 @@
 import { Outlet, Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useI18n } from '../context/i18n'
-import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat, Receipt, Languages, Monitor, CreditCard } from 'lucide-react'
+import { Home, Utensils, ClipboardList, LayoutGrid, Package, BarChart3, Users, LogOut, ChefHat, Receipt, Languages, Monitor, CreditCard, Sun, Moon } from 'lucide-react'
+import { useTheme } from '../context/ThemeContext'
 
 const allNavItems = [
   { path: '/dashboard', icon: Home, label: 'الرئيسية', roles: ['Admin', 'Cashier', 'Waiter', 'Chef'] },
@@ -33,6 +34,7 @@ const roleLabels = {
 export default function Layout() {
   const { user, logout } = useAuth()
   const { lang, toggleLang, t } = useI18n()
+  const { dark, toggle: toggleTheme } = useTheme()
   const location = useLocation()
 
   const navItems = allNavItems.filter(item =>
@@ -86,8 +88,25 @@ export default function Layout() {
           })}
         </nav>
 
-        {/* Language + Logout */}
+        {/* Theme + Language + Logout */}
         <div className="p-3 border-t border-gray-100 space-y-1">
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl w-full transition-colors group"
+          >
+            <div className="relative w-9 h-5 rounded-full transition-colors duration-300 flex items-center px-0.5"
+              style={{ background: dark ? '#3b82f6' : '#d1d5db' }}>
+              <div className="w-4 h-4 bg-white rounded-full shadow transition-all duration-300"
+                style={{ transform: dark ? 'translateX(16px)' : 'translateX(0)' }} />
+            </div>
+            <span className="flex items-center gap-1.5">
+              {dark ? <Moon size={14} className="text-blue-400" /> : <Sun size={14} className="text-yellow-500" />}
+              {dark ? 'وضع صباحي' : 'وضع ليلي'}
+            </span>
+          </button>
+
+          {/* Language */}
           <button
             onClick={toggleLang}
             className="flex items-center gap-3 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-xl w-full transition-colors"
@@ -95,6 +114,8 @@ export default function Layout() {
             <Languages size={18} />
             <span>{lang === 'ar' ? 'English' : 'عربي'}</span>
           </button>
+
+          {/* Logout */}
           <button
             onClick={logout}
             className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-xl w-full transition-colors"
